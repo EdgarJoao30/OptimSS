@@ -1,6 +1,5 @@
 pacman::p_load(INLA, inlabru, sf, fmesher, terra, tidyverse)
 wd <- '~/OneDrive - University of Glasgow/PhD/0_simulations'
-boundary <- st_read(paste0(wd, '/data/20240312_ROI_4326.shp')) |> st_union() |> st_transform(crs = 32650) 
 landcover <- rast(paste0(wd, '/data/aligned_landcover.tif'))
 
 points <- as.data.frame(landcover, xy=T)
@@ -10,15 +9,15 @@ points$class <- factor(points$class, levels = c("A_Primary", "B_Secondary", "C_O
 points <- st_as_sf(points, coords = c('x', 'y'), crs = 32650)
 
 ### SIMULATION
+generate_nbinomial <- function(x) {
+  rnbinom(mu = x, n = 1, size = 10)
+}
 beta <- c(0.7351552, 2.588883, 1.775618, 1.612111, 1.156367) # Primary, Secondary, Oil Palm, Plantation, Built-up
 beta0 <- beta[1]
 beta[1] <- 0
 months <- 1
 ccov <- factor(replicate(months, points$class))
 mu <- beta0 + beta[unclass(ccov)]
-generate_nbinomial <- function(x) {
-  rnbinom(mu = x, n = 1, size = 10)
-}
 points$mu <- exp(mu)
 seed <- 1234
 set.seed(seed)
