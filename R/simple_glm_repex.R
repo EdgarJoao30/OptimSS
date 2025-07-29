@@ -62,13 +62,13 @@ classes <- factor(sample(
 ))
 
 # Set true coefficients (on log scale), baseline = A_Primary (0)
-true_beta <- c(
-  "A_Primary" = 0,
-  "B_Secondary" = 1.5,
-  "C_Oil" = 1.0,
-  "D_Plantation" = 0.5,
-  "E_Built" = -0.5
-)
+# true_beta <- c(
+#   "A_Primary" = 0,
+#   "B_Secondary" = 1.5,
+#   "C_Oil" = 1.0,
+#   "D_Plantation" = 0.5,
+#   "E_Built" = -0.5
+# )
 
 # true_beta <- c(
 #   "A_Primary" = 0,
@@ -77,6 +77,14 @@ true_beta <- c(
 #   "D_Plantation" = 1,
 #   "E_Built" = -1
 # )
+
+true_beta <- c(
+  "A_Primary" = 0,
+  "B_Secondary" = 4.5,
+  "C_Oil" = 3.0,
+  "D_Plantation" = 1.5,
+  "E_Built" = -1.5
+)
 
 # Linear predictor and simulate from Poisson
 eta <- true_beta[as.character(classes)]
@@ -110,3 +118,5 @@ D_null <- -2 * sum(ll_null)
 
 pseudo_r2 <- 1 - D_model / D_null
 cat("Pseudo R² (GLM):", round(pseudo_r2, 3), "\n")
+
+plot(mu_hat, sim, pch = 20, col = scales::alpha("black", 0.3))
