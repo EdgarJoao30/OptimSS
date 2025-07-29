@@ -29,17 +29,37 @@ names(points)[1] <- 'landcover'
 generate_nbinomial <- function(x) {
   rnbinom(mu = x, n = 1, size = 10)
 }
+
+generate_poisson <- function(x) {
+  rpois(n = 1, lambda = x)
+}
 beta <- c(0.7351552, 2.588883, 1.775618, 1.612111, 1.156367) # Primary, Secondary, Oil Palm, Plantation, Built-up
 beta0 <- beta[1]
 beta[1] <- 0
+
+# Set the intercept to 0
+beta0 <- 0
+# Set A_Primary as reference (0), and use contrasts relative to it
+# So beta = 0 for A_Primary, and other values are relative differences
+beta_contrasts <- c(
+  "A_Primary" = 0,
+  "B_Secondary" = 2.588883 - 0.7351552,
+  "C_Oil" = 1.775618 - 0.7351552,
+  "D_Plantation" = 1.612111 - 0.7351552,
+  "E_Built" = 1.156367 - 0.7351552
+)
+
+points$mu <- exp(beta0 + beta_contrasts[as.character(points$class)])
+points$sim <- sapply(points$mu, generate_poisson)
+
 months <- 1
 ccov <- factor(replicate(months, points$class))
 mu <- beta0 + beta[unclass(ccov)]
 points$mu <- exp(mu)
 seed <- 1234
 set.seed(seed)
-nbinomial_sample <- sapply(points$mu, generate_nbinomial)
-points$sim <- nbinomial_sample
+dist_sample <- sapply(points$mu, generate_poisson)
+points$sim <- dist_sample
 
 
 
@@ -83,7 +103,7 @@ model <- sim ~ Intercept(1)  +
 fit <- bru(
   model,
   sample_points,
-  family = "nbinomial",
+  family = "poisson",
   options = list(
     control.family = list(link = "log"),
     control.inla = list(int.strategy = "eb")
@@ -104,7 +124,7 @@ pred <-
           ~ {
             mu <- exp(Intercept + land_cover)
             # pred <- rnbinom(n = nrow(points), size = fit$summary.hyperpar$mean[1], mu = mu)
-            pred <- sapply(mu, generate_nbinomial)
+            pred <- sapply(mu, generate_poisson)
             
             list(
               mu = mu,
@@ -114,7 +134,28 @@ pred <-
           n.samples = 1000
   )
 
+# Use only sample_points for evaluation
+pred_sample <- predict(fit, sample_points,
+                       ~ {
+                         mu <- exp(Intercept + land_cover)
+                         # pred <- rnbinom(n = nrow(points), size = fit$summary.hyperpar$mean[1], mu = mu)
+                         pred <- sapply(mu, generate_poisson)
+                         
+                         list(
+                           mu = mu,
+                           pred = pred
+                         )
+                       },
+                       n.samples = 1000
+)
+
 ### EVALUATE
+
+poisson_loglik <- function(y, mu) {
+  ll <- y * log(mu) - mu - lgamma(y + 1)
+  return(ll)
+}
+
 neg_bin_loglik <- function(y, mu, theta) {
   ll <- lgamma(y + theta) - lgamma(y + 1) - lgamma(theta) +
     theta * log(theta / (theta + mu)) +
@@ -124,16 +165,24 @@ neg_bin_loglik <- function(y, mu, theta) {
 y <- points$sim
 mu_model <- pred$pred$mean
 mu_null <- rep(mean(y), length(y))
-k <- fit$summary.hyperpar["size for the nbinomial observations (1/overdispersion)", "mean"]
-ll_model <- neg_bin_loglik(y, mu_model, k)
-ll_null <- neg_bin_loglik(y, mu_null, k)
 
+y_sample <- sample_points$sim
+mu_model_sample <- pred_sample$pred$mean
+mu_null_sample <- rep(mean(y_sample), length(y_sample))
+# k <- fit$summary.hyperpar["size for the nbinomial observations (1/overdispersion)", "mean"]
+ll_model <- poisson_loglik(y, mu_model)
+ll_null <- poisson_loglik(y, mu_null)
+ll_model_sample <- poisson_loglik(y_sample, mu_model_sample)
+ll_null_sample <- poisson_loglik(y_sample, mu_null_sample)
 D_model <- -2 * sum(ll_model)
 D_null <- -2 * sum(ll_null)
-
+D_model_sample <- -2 * sum(ll_model_sample)
+D_null_sample <- -2 * sum(ll_null_sample)
 pseudo_r2 <- 1 - D_model / D_null
+pseudo_r2_sample <- 1 - D_model_sample / D_null_sample
 
-pred$pred %>% 
+
+pred_sample$pred %>% 
 ggplot() +
   geom_point(
     aes(
