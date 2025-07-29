@@ -7,6 +7,23 @@ points$class <- factor(points$Landcover_AllClass)
 points$class <- plyr::revalue(points$class, c("0"="C_Oil", "1"="B_Secondary", "2"="A_Primary", "3"="D_Plantation", "4"="E_Built"))
 points$class <- factor(points$class, levels = c("A_Primary", "B_Secondary", "C_Oil", "D_Plantation", "E_Built"))
 points <- st_as_sf(points, coords = c('x', 'y'), crs = 32650)
+names(points)[1] <- 'landcover'
+
+# mos <- read.csv(paste0(wd, '/data/mosquito_data_for_sim.csv')) %>% dplyr::select(-X.1)
+# mn <- seq(as.Date("2012/10/1"), by = "month", length.out = 123)
+# mn <- data.frame(mn, seq(1,123)); colnames(mn) <- c("date", "mon")
+# mos$date <- as.Date(paste0(mos$year,"/", mos$month, "/01"))
+# mos <- merge(mos, mn, by="date")
+# mos <- mos[c("date", "Class", "bite_rate", "X", "Y", "mon")]
+# 
+# mos <- st_as_sf(mos, coords = c('X', 'Y'), crs = 'EPSG: 4326') %>% st_transform(crs = 32650)
+# mos$class <- plyr::revalue(mos$Class, c("Oil Palm"="Oil palm"))
+# mos$class <- plyr::revalue(mos$Class, c("Oil palm"="C_Oil", 
+#                                         "Primary" = "A_Primary",
+#                                         "Secondary" = "B_Secondary",
+#                                         "Plantation" = "D_Plantation",
+#                                         "Kampung" = "E_Built"))
+
 
 ### SIMULATION
 generate_nbinomial <- function(x) {
@@ -23,7 +40,40 @@ seed <- 1234
 set.seed(seed)
 nbinomial_sample <- sapply(points$mu, generate_nbinomial)
 points$sim <- nbinomial_sample
-names(points)[1] <- 'landcover'
+
+
+
+# model <- bite_rate ~ Intercept(1)  + 
+#   land_cover(class, model = 'factor_contrast') 
+# 
+# fit <- bru(
+#   model,
+#   mos,
+#   family = "nbinomial",
+#   options = list(
+#     control.family = list(link = "log"),
+#     control.inla = list(int.strategy = "eb")
+#     # control.fixed = list(
+#     #   mean = 0,
+#     #   prec = 1e-6  # Very large variance = flat prior
+#     # )
+#   )
+# )
+# 
+# summary(fit)
+# fit$summary.fixed
+# fit$summary.random$land_cover
+# 
+# sim <- generate(fit, points,
+#          ~ {
+#            mu <- exp(Intercept + land_cover)
+#            sim <- rnbinom(n = nrow(points), size = fit$summary.hyperpar$mean[1], mu = mu)
+#            },
+#          n.samples = 1
+# )
+# 
+# points$sim <- sim[, 1]
+
 
 ### MODEL FIT
 sample_points <- points %>% slice_sample(n = 1000)
@@ -53,7 +103,8 @@ pred <-
   predict(fit, points,
           ~ {
             mu <- exp(Intercept + land_cover)
-            pred <- rnbinom(n = nrow(points), size = fit$summary.hyperpar$mean[1], mu = mu)
+            # pred <- rnbinom(n = nrow(points), size = fit$summary.hyperpar$mean[1], mu = mu)
+            pred <- sapply(mu, generate_nbinomial)
             
             list(
               mu = mu,
