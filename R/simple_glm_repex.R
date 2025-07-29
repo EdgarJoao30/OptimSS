@@ -1,7 +1,7 @@
 library(INLA)
 library(inlabru)
 library(dplyr)
-
+library(MASS)
 ### With INLA / inlabru
 
 # Simulate 5000 points with land cover classes
@@ -89,13 +89,15 @@ true_beta <- c(
 # Linear predictor and simulate from Poisson
 eta <- true_beta[as.character(classes)]
 mu <- exp(eta)
-sim <- rpois(n, lambda = mu)
+# sim <- rpois(n, lambda = mu)
+sim <- rnbinom(n = n, mu = mu, size = 100)
 
 # Data frame
 dat <- data.frame(sim = sim, class = classes)
 
 # Fit GLM
-fit_glm <- glm(sim ~ class, data = dat, family = poisson(link = "log"))
+# fit_glm <- glm(sim ~ class, data = dat, family = poisson(link = "log"))
+fit_glm <- glm.nb(sim ~ class, data = dat)
 summary(fit_glm)
 
 # Predicted mean (mu) from the fitted model
@@ -109,9 +111,18 @@ poisson_loglik <- function(y, mu) {
   y * log(mu) - mu - lgamma(y + 1)
 }
 
+neg_bin_loglik <- function(y, mu, theta) {
+  ll <- lgamma(y + theta) - lgamma(y + 1) - lgamma(theta) +
+    theta * log(theta / (theta + mu)) +
+    y * log(mu / (theta + mu))
+  return(ll)
+}
+
 # Deviance calculation
-ll_model <- poisson_loglik(sim, mu_hat)
-ll_null <- poisson_loglik(sim, mu_null)
+# ll_model <- poisson_loglik(sim, mu_hat)
+# ll_null <- poisson_loglik(sim, mu_null)
+ll_model <- neg_bin_loglik(sim, mu_hat, fit_glm$theta)
+ll_null <- neg_bin_loglik(sim, mu_null, fit_glm$theta)
 
 D_model <- -2 * sum(ll_model)
 D_null <- -2 * sum(ll_null)
