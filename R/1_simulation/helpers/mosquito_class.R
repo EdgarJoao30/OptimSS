@@ -1,16 +1,15 @@
-library(sf)
-library(terra)
-library(stars)
-library(raster)
-library(INLA)
-library(inlabru)
-library(fmesher)
-source("./R/generate_sims.R")
+### Load and install required packages
+packs <- c("sf", "terra", "stars", "raster", "iNLA", "inlabru","fmesher")
+success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
+install.packages(names(success)[!success])
+sapply(names(success)[!success], require, character.only = TRUE)
+source("~/Documents/GitHub/OptimSS/R/1_simulation/helpers/generate_sims.R")
 
 # Define mosquito class
 setClass(
   "Mosquito",
   slots = list(
+    boundary = 'sf',
     lc_coefficients = "numeric",
     spatial_range = "numeric",
     rho = 'numeric',
@@ -41,7 +40,7 @@ setGeneric("_get_sims", function(object) {
 })
 
 setMethod("_get_sims", "Mosquito", function(object) {
-  result <- generate_sims(boundary,
+  result <- generate_sims(object@boundary,
                           object@land_cover,
                           theta = object@theta, 
                           rho = object@rho, 
@@ -57,8 +56,10 @@ setMethod("_get_sims", "Mosquito", function(object) {
 
 
 # Constructor function for the Mosquito class
-Mosquito <- function(lc_coefficients, spatial_range, rho, phi, land_cover, seed) {
-  obj <- new("Mosquito", lc_coefficients = lc_coefficients, 
+Mosquito <- function(boundary, lc_coefficients, spatial_range, rho, phi, land_cover, seed) {
+  obj <- new("Mosquito", 
+             boundary = boundary,
+             lc_coefficients = lc_coefficients, 
              spatial_range = spatial_range,
              rho = rho,
              phi = phi,

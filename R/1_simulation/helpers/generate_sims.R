@@ -1,12 +1,8 @@
-library(INLA)
-library(inlabru)
-library(fmesher)
-library(sf)
-library(terra)
-library(tidyverse)
-library(tidyterra)
-library(stars)
-library(raster)
+### Load and install required packages
+packs <- c("tidyverse", "INLA", "inlabru", "sf", "fmesher", "terra", "stars", "raster")
+success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
+install.packages(names(success)[!success])
+sapply(names(success)[!success], require, character.only = TRUE)
 
 
 generate_sims <- function(boundary = boundary,

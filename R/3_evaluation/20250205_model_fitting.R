@@ -1,13 +1,10 @@
 #################################################### Model fitting ###############################################################
-suppressMessages(library(sf))
-suppressMessages(library(tidyverse))
-suppressMessages(library(terra))
-suppressMessages(library(raster))
-suppressMessages(library(inlabru))
-suppressMessages(library(fmesher))
-suppressMessages(library(INLA))
-suppressMessages(library(ModelMetrics))
-source('summarize_model.R')
+packs <- c("sf", "terra", "tidyverse", "raster", "INLA", "inlabru", "fmesher", "ModelMetrics")
+success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
+install.packages(names(success)[!success])
+sapply(names(success)[!success], require, character.only = TRUE)
+source('~/Documents/GitHub/OptimSS/R/3_evaluation/helpers/summarize_model.R')
+
 wd <- '~/OneDrive - University of Glasgow/PhD/0_simulations'
 # Landcover
 boundary <- st_read(paste0(wd, '/data/20240312_ROI_4326.shp')) |> st_union() |> st_transform(crs = 32650) 
