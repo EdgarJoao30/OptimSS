@@ -6,13 +6,19 @@ success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
 
+
+species <- commandArgs(trailingOnly = TRUE)[1]
+sampling_strategy <- commandArgs(trailingOnly = TRUE)[2]
+sampling_size <- as.numeric(commandArgs(trailingOnly = TRUE)[3])
+
 wd <- '~/OneDrive - University of Glasgow/PhD/0_simulations' 
+ssdwd <- paste0("/Volumes/", R.utils::capitalize(species), "/PhD")
 boundary <- st_read(paste0(wd, '/data/20240312_ROI_4326.shp')) |>
   st_union() |>
   st_transform(crs = 32650)
-model_result <- paste0(wd, '/post_samples/anopheles/post_a_15.Rdata')
+
+model_result <- paste0(ssdwd, "/post_samples/lite/post_", sampling_strategy, "_", sampling_size, ".RData")
 sim_raster <- paste0(wd, '/data/20250331_sim_raster001.tif')
-m <- 1
 
 preprocess_df <- function(model_result, sim_raster, m) {
   load(model_result)
@@ -48,6 +54,6 @@ preprocess_df <- function(model_result, sim_raster, m) {
 } 
 
 
-a_an_df <- preprocess_df(model_result, sim_raster, m)
+df <- map_df(1:12, ~preprocess_df(model_result, sim_raster, .x))
 
-st_write(a_an_df, paste0(wd, '/post_samples/anopheles/a_15_an_df.geojson'))
+st_write(df, paste0(wd, '/post_samples/', species, '/', sampling_strategy, '_', sampling_size, '_allmonths.geojson'))
