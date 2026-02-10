@@ -9,18 +9,33 @@ library(landscapemetrics)
 sim <- rast("~/OneDrive - University of Glasgow/PhD/0_simulations/data/20250331_sim_raster001.tif")
 
 a <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/a_15_an_df.geojson") |>
-  dplyr::filter(month == 1 & variable == "pred_mean") |>
-  dplyr::select(value, geometry) |>
-  st_rasterize() |>
-  rast() |>
-  mask(sim[[1]])
+  dplyr::filter(variable == "pred_mean") |>
+  dplyr::select(month, value, geometry) |>
+  split(~month) |>
+  lapply(function(x) {
+    x |>
+      dplyr::select(value, geometry) |>
+      st_rasterize() |>
+      rast() |>
+      mask(sim[[1]])
+  })
+
+length(a)
+plot(a[[2]])
+
+unique(a$month)
 
 i <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/i_50_an_df.geojson") |>
-  dplyr::filter(month == 1 & variable == "pred_mean") |>
-  dplyr::select(value, geometry) |>
-  st_rasterize() |>
-  rast() |>
-  mask(sim[[1]])
+  dplyr::filter(variable == "pred_mean") |>
+  dplyr::select(month, value, geometry) |>
+  split(~month) |>
+  lapply(function(x) {
+    x |>
+      dplyr::select(value, geometry) |>
+      st_rasterize() |>
+      rast() |>
+      mask(sim[[1]])
+  })
 
 sim_values <- sim[[1]][!is.na(sim[[1]])]
 i_values <- i[!is.na(i)]
@@ -55,39 +70,65 @@ i_matrix[1, 1] <- 0
 
 i_classified <- classify(i,i_matrix)
 
-lsm_l_pd(sim_classified)
-freq(sim_classified)
+n_classes <- length((unique(values(sim_classified, na.rm = TRUE))))
+w_size <- 15
+w_matrix <- matrix(1, nrow= w_size, ncol= w_size)
 
-w_matrix <- matrix(1, nrow=15, ncol=15)
+calculate_frequency <- function(classified_data) {
+  lapply(0:(n_classes - 1), function(class) {
+    dummy_class <- (classified_data == class) * 1
+    freq <- focal(dummy_class, w=w_matrix, fun=sum, na.rm=TRUE) / (w_size^2)
+    return(freq)
+  })
+}
 
-sim_0 <- sim_classified
-sim_0[sim_0 == 0] <- 11
-sim_0[sim_0 < 11] <- 0
-sim_0[sim_0 == 11] <- 1
+sim_freq_list <- calculate_frequency(sim_classified)
+a_freq_list <- calculate_frequency(a_classified)
+i_freq_list <- calculate_frequency(i_classified)
 
-sim_1 <- sim_classified
-sim_1[sim_1 != 1] <- 0
+calculate_squared_diff <- function(freq_list1, freq_list2) {
+  lapply(seq_along(freq_list1), function(idx) {
+    (freq_list1[[idx]] - freq_list2[[idx]])^2
+  })
+}
 
-sim_2 <- sim_classified
-sim_2[sim_2 != 2] <- 0
-sim_2[sim_2 == 2] <- 1
+diff_a <- calculate_squared_diff(sim_freq_list, a_freq_list)
+diff_i <- calculate_squared_diff(sim_freq_list, i_freq_list)
 
-sim_3 <- sim_classified
-sim_3[sim_3 != 3] <- 0
-sim_3[sim_3 == 3] <- 1
+length(diff_a)
+class(diff_a[[1]])
 
-sim_4 <- sim_classified
-sim_4[sim_4 != 4] <- 0
-sim_4[sim_4 == 4] <- 1
+plot(diff_a[[1]])
 
-freq_window_0 <- focal(sim_0, w=w_matrix, fun=sum, na.rm=TRUE) / 225
-freq_window_1 <- focal(sim_1, w=w_matrix, fun=sum, na.rm=TRUE) / 225
-freq_window_2 <- focal(sim_2, w=w_matrix, fun=sum, na.rm=TRUE) / 225
-freq_window_3 <- focal(sim_3, w=w_matrix, fun=sum, na.rm=TRUE) / 225
-freq_window_4 <- focal(sim_4, w=w_matrix, fun=sum, na.rm=TRUE) / 225
+sum_a <- Reduce("+", diff_a)
+sum_i <- Reduce("+", diff_i)
 
-plot(freq_window_0)
-plot(freq_window_1)
-plot(freq_window_2)
-plot(freq_window_3)
-plot(freq_window_4)
+plot(sum_a)
+plot(sum_i)
+
+plot_window_result <- function(data, title, limits) {
+  ggplot() +
+    geom_spatraster(data = data) +
+    scale_fill_viridis_c(limits = limits, oob = scales::squish, na.value = NA) +
+    labs(title = title, fill = "Distance") +
+    theme_void(base_family = 'Times New Roman', base_size = 12) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      plot.margin = unit(c(5, 5, 5, 5), "pt")
+    )
+}
+
+# Determine the common color scale limits
+common_limits <- range(c(values(sum_a), values(sum_i)), na.rm = TRUE)
+
+# Create the plots
+plot_a <- plot_window_result(sum_a, "Window Result A", common_limits)
+plot_i <- plot_window_result(sum_i, "Window Result I", common_limits)
+
+# Combine the plots side by side
+combined_plot <- plot_a + plot_i + plot_layout(ncol = 2, guides = 'collect')
+
+# Display the combined plot
+print(combined_plot)
