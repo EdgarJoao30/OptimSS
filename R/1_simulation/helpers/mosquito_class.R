@@ -1,5 +1,5 @@
 ### Load and install required packages
-packs <- c("sf", "terra", "stars", "raster", "iNLA", "inlabru","fmesher")
+packs <- c("sf", "terra", "stars", "raster", "INLA", "inlabru", "fmesher")
 success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)

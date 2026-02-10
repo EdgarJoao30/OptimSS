@@ -16,7 +16,7 @@ generate_sims <- function(boundary = boundary,
                          phi = phi,
                          seed = 1234) {
   
-  points <- as.data.frame(landcover, xy=T)
+  points <- as.data.frame(landcover, xy = TRUE)
   # colnames(points)[3] <- 'class'
   # points$class <- factor(points$class)
   # points$class <- relevel(factor(points$class), ref = 2)

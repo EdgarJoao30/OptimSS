@@ -1,10 +1,11 @@
-library(terra)
-library(sf)
-library(stars)
-library(tidyterra)
-library(tidyverse)
-library(patchwork)
-library(landscapemetrics)
+# This script calculates the focal discrete metrics between the simulated raster and the predicted rasters 
+# for mosquito abundance. It classifies the rasters into discrete classes based on quantiles, 
+# calculates the frequency of each class within a moving window, and then computes the squared differences 
+# between the simulated and predicted frequencies. 
+packs <- c("tidyverse", "terra", "sf", "stars", "tidyterra", "patchwork", "landscapemetrics")
+success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
+install.packages(names(success)[!success])
+sapply(names(success)[!success], require, character.only = TRUE)
 
 sim <- rast("~/OneDrive - University of Glasgow/PhD/0_simulations/data/20250331_sim_raster001.tif")
 
@@ -47,37 +48,37 @@ breaks_a <- quantile(a_values, probs = seq(0, 1, length.out = n_breaks), na.rm =
 breaks_i <- quantile(i_values, probs = seq(0, 1, length.out = n_breaks), na.rm = TRUE)
 
 sim_matrix <- matrix(c(breaks_sim[-length(breaks_sim)],
-                           breaks_sim[-1],
-                           seq_along(breaks_sim[-1]) -1),
-                         ncol = 3, byrow = FALSE)
+                       breaks_sim[-1],
+                       seq_along(breaks_sim[-1]) - 1),
+                     ncol = 3, byrow = FALSE)
 
 sim_classified <- classify(sim[[1]], sim_matrix)
 
 a_matrix <- matrix(c(breaks_a[-length(breaks_a)],
                      breaks_a[-1],
-                     seq_along(breaks_a[-1]) -1),
+                     seq_along(breaks_a[-1]) - 1),
                    ncol = 3, byrow = FALSE)
 a_matrix[1, 1] <- 0
 
-a_classified <- classify(a,a_matrix)
+a_classified <- classify(a, a_matrix)
 
 i_matrix <- matrix(c(breaks_i[-length(breaks_i)],
                      breaks_i[-1],
-                     seq_along(breaks_i[-1]) -1),
+                     seq_along(breaks_i[-1]) - 1),
                    ncol = 3, byrow = FALSE)
 
 i_matrix[1, 1] <- 0
 
-i_classified <- classify(i,i_matrix)
+i_classified <- classify(i, i_matrix)
 
 n_classes <- length((unique(values(sim_classified, na.rm = TRUE))))
 w_size <- 15
-w_matrix <- matrix(1, nrow= w_size, ncol= w_size)
+w_matrix <- matrix(1, nrow = w_size, ncol = w_size)
 
 calculate_frequency <- function(classified_data) {
   lapply(0:(n_classes - 1), function(class) {
     dummy_class <- (classified_data == class) * 1
-    freq <- focal(dummy_class, w=w_matrix, fun=sum, na.rm=TRUE) / (w_size^2)
+    freq <- focal(dummy_class, w = w_matrix, fun = sum, na.rm = TRUE) / (w_size^2)
     return(freq)
   })
 }
