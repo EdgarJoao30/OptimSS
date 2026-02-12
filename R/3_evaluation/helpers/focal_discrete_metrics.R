@@ -59,17 +59,6 @@ classify_raster_by_quantiles <- function(raster_data, n_breaks = 6) {
   rast(classified_layers)
 }
 
-# Apply classification function
-sim_classified <- classify_raster_by_quantiles(sim)
-a_classified <- classify_raster_by_quantiles(a)
-i_classified <- classify_raster_by_quantiles(i)
-
-
-n_classes <- length((unique(values(sim_classified[[1]], na.rm = TRUE))))
-n_layers <- nlyr(sim_classified)
-w_size <- 15
-w_matrix <- matrix(1, nrow = w_size, ncol = w_size)
-
 calculate_frequency <- function(classified_data) {
   lapply(0:(n_classes - 1), function(class) {
     dummy_class <- (classified_data == class) * 1
@@ -79,49 +68,13 @@ calculate_frequency <- function(classified_data) {
   })
 }
 
-sim_freq_list <- lapply(seq_len(n_layers), function(i) calculate_frequency(sim_classified[[i]]))
-a_freq_list <- lapply(seq_len(n_layers), function(i) calculate_frequency(a_classified[[i]]))
-i_freq_list <- lapply(seq_len(n_layers), function(i) calculate_frequency(i_classified[[i]]))
-
 calculate_squared_diff <- function(freq_list1, freq_list2) {
   lapply(seq_along(freq_list1), function(idx) {
     (freq_list1[[idx]] - freq_list2[[idx]])^2
   })
 }
 
-diff_a <- lapply(seq_len(n_layers), function(i) calculate_squared_diff(sim_freq_list[[i]], a_freq_list[[i]]))
-diff_i <- lapply(seq_len(n_layers), function(i) calculate_squared_diff(sim_freq_list[[i]], i_freq_list[[i]]))
-
-calculate_per_class_diff <- function(diff_list) {
-  lapply(seq_len(n_layers), function(i) {
-    sapply(diff_list[[i]], function(layer) {
-      mean(values(layer), na.rm = TRUE)
-    })
-  })
-}
-
-per_class_a <- calculate_per_class_diff(diff_a)
-per_class_i <- calculate_per_class_diff(diff_i)
-
-per_class_a_mean <- sapply(seq_len(n_classes), function(j) {
-  mean(sapply(seq_len(n_layers), function(i) per_class_a[[i]][j]))
-}) 
-
-per_class_i_mean <- sapply(seq_len(n_classes), function(j) {
-  mean(sapply(seq_len(n_layers), function(i) per_class_i[[i]][j]))
-}) 
-
-sum_a <- lapply(seq_len(n_layers), function(i) Reduce("+", diff_a[[i]]))
-sum_i <- lapply(seq_len(n_layers), function(i) Reduce("+", diff_i[[i]]))
-
-avg_a <- Reduce("+", sum_a) / n_layers
-avg_i <- Reduce("+", sum_i) / n_layers
-
-avg_avg_a <- mean(values(avg_a), na.rm = TRUE)
-avg_avg_i <- mean(values(avg_i), na.rm = TRUE)
-
-
-calculate_focal_discrete_metrics <- function(sim, pred, w_size = 15) {
+focal_discrete_metrics <- function(sim, pred, w_size = 15) {
   # Classify rasters by quantiles
   sim_classified <- classify_raster_by_quantiles(sim)
   pred_classified <- classify_raster_by_quantiles(pred)
@@ -163,9 +116,29 @@ calculate_focal_discrete_metrics <- function(sim, pred, w_size = 15) {
   )
 }
 
+sim_0 <- (sim_classified == 0) * 1
+plot(sim_classified[[3]])
+plot(a_classified[[3]])
+plot(i_classified[[3]])
+sim_ps <- window_lsm(sim_classified, window = w_matrix, 
+                     what = c("lsm_l_area_cv", "lsm_l_joinent", "lsm_l_contig_mn", 
+                              "lsm_l_frac_mn", "lsm_l_relmutinf"))
+a_ps <- window_lsm(a_classified, window = w_matrix, 
+                   what = c("lsm_l_area_cv", "lsm_l_joinent", "lsm_l_contig_mn", 
+                            "lsm_l_frac_mn", "lsm_l_relmutinf"))
+i_ps <- window_lsm(i_classified, window = w_matrix, 
+                   what = c("lsm_l_area_cv", "lsm_l_joinent", "lsm_l_contig_mn", 
+                            "lsm_l_frac_mn", "lsm_l_relmutinf"))
+plot(sim_ps[[3]]$lsm_l_relmutinf |> mask(sim[[1]]))
+plot(a_ps[[3]]$lsm_l_relmutinf |> mask(sim[[1]])) 
+plot(i_ps[[3]]$lsm_l_relmutinf |> mask(sim[[1]]))
+
+cor_sim <- cor(values(sim_ps[[1]]$lsm_l_joinent), values(sim_ps[[1]]$lsm_l_mutinf), use = "complete.obs")
+
+
 # Apply function
-focal_metrics_a <- calculate_focal_discrete_metrics(sim, a, w_size = 15)
-focal_metrics_i <- calculate_focal_discrete_metrics(sim, i, w_size = 15)
+focal_metrics_a <- focal_discrete_metrics(sim, a, w_size = 15)
+focal_metrics_i <- focal_discrete_metrics(sim, i, w_size = 15)
 diff_a <- focal_metrics_a$diff
 plot(diff_a[[1]][[1]])
 per_class_a_mean <- focal_metrics_a$per_class_mean
