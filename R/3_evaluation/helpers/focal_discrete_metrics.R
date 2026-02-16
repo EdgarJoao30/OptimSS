@@ -20,7 +20,7 @@ install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
 
 sim <- rast("~/OneDrive - University of Glasgow/PhD/0_simulations/data/20250331_sim_raster001.tif")
-
+mean_sim <- rast("~/Documents/GitHub/OptimSS/data/1_raw/20260214_sim_raster001_mean.tif")
 a <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/a_15_allmonths.geojson") |>
   dplyr::filter(variable == "pred_mean") |>
   dplyr::select(month, value, geometry) |>
