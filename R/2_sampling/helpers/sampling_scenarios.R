@@ -1,16 +1,18 @@
 #################################################### Generate sampling scenarios ###############################################################
+# This function generates sampling scenarios based on the specified parameters. 
+# It creates samples and grids for each combination of model, sample size, and iteration.
+# The function takes the following arguments:
+# - roi: A spatial object representing the region of interest.
+# - iterations: The number of iterations to perform for each combination of model and sample size.
+# - sample_sizes: A vector of sample sizes to use for generating samples.
+# - models: A vector of model identifiers to specify the sampling strategy.
+# - crs: The coordinate reference system to use for the spatial data.
 packs <- c("sf", "tidyverse")
 success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
 source('~/Documents/GitHub/OptimSS/R/2_sampling/helpers/sampling_functions.R')
 
-# roi <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/ROI_32650.geojson')
-
-############## 
-############## 
-############## 
-# iterations = 100
 generate_sampling_scenarios <- function(roi,
                     iterations = 100,
                     sample_sizes = c(5, 10, 15, 25, 50),
@@ -25,19 +27,23 @@ generate_sampling_scenarios <- function(roi,
     samples_temp <- list()
     grids_temp <- list()
     for (i in seq_len(iterations)) {
-    if (m == 1) {
+    if (models[m] == 'a') {
+      # Lattice - static sampling design
       temp <- uniform_sample(roi, sample_size = sample_sizes[n], fixed = TRUE)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 2) {
+    } else if (models[m] == 'b') {
+      # Stratified - static sampling design
       temp <- stratified_sample(roi, sample_size = sample_sizes[n], fixed = TRUE)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 3) {
+    } else if (models[m] == 'c') {
+      # Random - static sampling design
       temp <- random_sample(roi, sample_size = sample_sizes[n], fixed = TRUE)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 4) {
+    } else if (models[m] == 'd') {
+      # Lattice - rotational sampling design
       ss1 <- round(sample_sizes[n] / 2)
       ss2 <- sample_sizes[n] - ss1
-      temp1 <- random_sample(roi, sample_size = ss1, fixed = TRUE)
+      temp1 <- uniform_sample(roi, sample_size = ss1, fixed = TRUE)
       temp2 <- uniform_sample(roi, sample_size = ss2, fixed = FALSE)
       s1 <- st_as_sf(temp1[[1]], coords = c('x', 'y'), crs = crs)
       s2 <- st_as_sf(temp2[[1]], coords = c('x', 'y'), crs = crs)
@@ -46,10 +52,11 @@ generate_sampling_scenarios <- function(roi,
       g2 <- temp2[[2]]
       g <- rbind(g1, g2)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 5) {
+    } else if (models[m] == 'e') {
+      # Stratified - rotational sampling design
       ss1 <- round(sample_sizes[n] / 2)
       ss2 <- sample_sizes[n] - ss1
-      temp1 <- random_sample(roi, sample_size = ss1, fixed = TRUE)
+      temp1 <- stratified_sample(roi, sample_size = ss1, fixed = TRUE)
       temp2 <- stratified_sample(roi, sample_size = ss2, fixed = FALSE)
       s1 <- st_as_sf(temp1[[1]], coords = c('x', 'y'), crs = crs)
       s2 <- st_as_sf(temp2[[1]], coords = c('x', 'y'), crs = crs)
@@ -58,7 +65,8 @@ generate_sampling_scenarios <- function(roi,
       g2 <- temp2[[2]]
       g <- rbind(g1, g2)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 6) {
+    } else if (models[m] == 'f') {
+      # Random - rotational sampling design
       ss1 <- round(sample_sizes[n] / 2)
       ss2 <- sample_sizes[n] - ss1
       temp1 <- random_sample(roi, sample_size = ss1, fixed = TRUE)
@@ -70,13 +78,16 @@ generate_sampling_scenarios <- function(roi,
       g2 <- temp2[[2]]
       g <- rbind(g1, g2)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 7) {
+    } else if (models[m] == 'g') {
+      # Lattice - dynamic sampling design
       temp <- uniform_sample(roi, sample_size = sample_sizes[n], fixed = FALSE)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 8) {
+    } else if (models[m] == 'h') {
+      # Stratified - dynamic sampling design
       temp <- stratified_sample(roi, sample_size = sample_sizes[n], fixed = FALSE)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
-    } else if (m == 9) {
+    } else if (models[m] == 'i') {
+      # Random - dynamic sampling design
       temp <- random_sample(roi, sample_size = sample_sizes[n], fixed = FALSE)
       print(paste0('Model: ', models[m], ' - ', 'Sample size: ', sample_sizes[n], ' - ', 'Iteration: ', i))
     } else {
@@ -102,21 +113,9 @@ generate_sampling_scenarios <- function(roi,
   } # end sample_sizes
   samples[[m]] <- do.call(rbind, model_s_temp)
   grids[[m]] <- do.call(rbind, model_g_temp)
-  } # end models
+  } # end designs
   samples <- do.call(rbind, samples)
   grids <- do.call(rbind, grids)
   grids <- grids[, c('id', 'cat', 'month', 'iteration', 'sample_size', 'scenario', 'geometry')]
   return(list(samples = samples, grids = grids))
 }
-
-# call the function and assign outputs to the expected variables
-# res <- generate_sampling_scenarios(roi,
-#                   iterations = 1,
-#                   sample_sizes = c(5, 10),
-#                   models = c('a','b','c'),
-#                   crs = 32650)
-# samples <- res$samples
-# grids <- res$grids
-# 
-# st_write(samples, paste0(wd, '/data/test/20250728_points_sampling_scenarios_nobuffer.geojson'), append = F)
-# st_write(grids, paste0(wd, '/data/test/20250728_grids_sampling_scenarios_nobuffer.geojson'), append = F)

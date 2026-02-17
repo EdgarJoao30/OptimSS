@@ -1,17 +1,10 @@
 #################################################### Functions for sampling every month ###############################################################
-library(sf)
-library(sp)
-library(raster)
-library(tidyverse)
-
-# wd <- '~/OneDrive - University of Glasgow/PhD/0_simulations'
-# roi <- st_read(paste0(wd, '/data/20240312_ROI_4326.shp')) |>
-#   st_transform(crs = 32650)
-
-
-############## 
-############## Function to sample randomly 
-############## 
+# This script contains functions to generate spatio-temporal sampling locations for each month, either randomly or stratified by land cover categories.
+# The functions allow for fixed sampling locations across all months or different locations for each month.
+packs <- c("sf", "raster", "sp", "tidyverse")
+success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
+install.packages(names(success)[!success])
+sapply(names(success)[!success], require, character.only = TRUE)
 
 random_sample <- function(roi, sample_size = 15, points_per_sample = 3, fixed = TRUE) {
   # If fixed, sample grids once for the entire year
@@ -55,22 +48,6 @@ random_sample <- function(roi, sample_size = 15, points_per_sample = 3, fixed = 
   
   return(list(combined_samples, combined_grids))
 }
-
-# test <- uniform_sample(roi, fixed = FALSE)
-# 
-# test_samples <- st_as_sf(test[[1]], coords = c('x', 'y'), crs = 32650)
-# test_grids <- test[[2]]
-# 
-# ggplot() +
-#   #geom_sf(data = roi) +
-#   geom_sf(data = test_grids %>% filter(month == 12)) +
-#   geom_sf(data = test_samples%>% filter(month == 12), aes(color = month))
-# 
-
-
-############## 
-############## Function to make a stratified sample using the categories 
-############## 
 
 stratified_sample <- function(roi, sample_size = 15, points_per_sample = 3, fixed = TRUE) {
   # Initialize lists to store samples and grids for all months
@@ -131,10 +108,6 @@ stratified_sample <- function(roi, sample_size = 15, points_per_sample = 3, fixe
   
   return(list(combined_samples, combined_grids))
 }
-
-############## 
-############## Function to get samples equally spaced in the overall geometry of all the polygons together for each month
-############## 
 
 uniform_sample <- function(roi, sample_size = 15, points_per_sample = 3, fixed = TRUE) {
   # Initialize lists to store samples and grids for all months

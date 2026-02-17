@@ -1,4 +1,6 @@
 #################################################### Extract values from habitat and simulations ###############################################################
+# This script extracts the land cover and simulated values for each sampling point in the sampling scenarios. 
+# The output is a geojson file with the sampling points and the extracted values for land cover and simulations.
 ### Load and install required packages
 packs <- c("sf", "terra")
 success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
@@ -16,8 +18,8 @@ extract_values <- function(df, lc, sims) {
     r_m <- sims[[m]]
     
     df_e <- terra::extract(r_m, df_m)
-    colnames(df_e) <- c('ID', 'sim_anoph')
-    df_m$sim_anoph <- df_e$sim_anoph
+    colnames(df_e) <- c('ID', 'sim')
+    df_m$sim <- df_e$sim
     dfs[[m]] <- df_m
   }
   
@@ -25,19 +27,3 @@ extract_values <- function(df, lc, sims) {
   
   return(df_all)
 }
-
-
-
-
-# wd <- '~/OneDrive - University of Glasgow/PhD/0_simulations'
-# boundary <- st_read(paste0(wd, '/data/20240312_ROI_4326.shp')) |>
-#   st_union() |>
-#   st_transform(crs = 32650)
-# # Land cover
-# landcover <- rast(paste0(wd, '/data/aligned_landcover.tif'))
-# df <- st_read(paste0(wd, '/data/test/20250728_points_sampling_scenarios_nobuffer.geojson'))
-# sim <- rast(paste0(wd, '/data/20250331_sim_raster001.tif'))
-# 
-# values <- extract_values(df, landcover, sim)
-# 
-# st_write(values, paste0(wd, '/data/test/20250728_points_sampling_scenarios_alldata.geojson'), append = F)

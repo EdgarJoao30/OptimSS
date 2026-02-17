@@ -43,4 +43,4 @@ mean_sim <- compute_mean_surface(boundary = roi,
                                     land_cover = landcover)
 
 writeRaster(mos_sim@simulated_surface, paste0("~/Documents/GitHub/OptimSS/data/2_simulation/", species, '_sim.tif'), overwrite=TRUE)
-writeRaster(mean_sim$mean_surface, paste0("~/Documents/GitHub/OptimSS/data/2_simulation/", species, '_sim__mean.tif'), overwrite=TRUE)
+writeRaster(mean_sim$mean_surface, paste0("~/Documents/GitHub/OptimSS/data/2_simulation/", species, '_sim_mean.tif'), overwrite=TRUE)

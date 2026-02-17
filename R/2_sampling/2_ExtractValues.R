@@ -7,9 +7,10 @@ source("./helpers/extract_values.R")
 
 roi <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/ROI_32650.geojson')
 landcover <- rast('~/Documents/GitHub/OptimSS/data/1_raw/aligned_landcover.tif')
-simulation <- rast('~/Documents/GitHub/OptimSS/data/2_simulation/20250331_sim_raster001.tif')
 sampling <- st_read('~/Documents/GitHub/OptimSS/data/3_sampling/20250429_points_sampling_scenarios_nobuffer.geojson')
+species <- commandArgs(trailingOnly = TRUE)
+simulation <- rast(paste0('~/Documents/GitHub/OptimSS/data/2_simulation/', species, '_sim.tif'))
 
-test_values <- extract_values(sampling, landcover, simulation)
+values <- extract_values(sampling, landcover, simulation)
 
-# st_write(test_values, paste0(wd, '/data/20250331_points_sampling_scenarios_alldata.geojson'), append = F)
+st_write(values, paste0("~/Documents/GitHub/OptimSS/data/3_sampling/", species, "_sampling.geojson"), append = F)
