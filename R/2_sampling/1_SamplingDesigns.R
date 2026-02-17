@@ -15,5 +15,5 @@ sampling_designs <- generate_sampling_scenarios(roi,
 samples <- sampling_designs$samples
 grids <- sampling_designs$grids
 
-st_write(samples, '~/Documents/GitHub/OptimSS/R/2_sampling/sampling_designs.geojson', append = FALSE)
+st_write(samples, '~/Documents/GitHub/OptimSS/data/3_sampling/sampling_designs.geojson', append = FALSE)
 # st_write(grids, paste0(wd, '/data/test/20250728_grids_sampling_scenarios_nobuffer.geojson'), append = F)
