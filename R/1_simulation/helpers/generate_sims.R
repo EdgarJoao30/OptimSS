@@ -61,3 +61,4 @@ generate_sims <- function(boundary = boundary,
   
   return(surface)
 }
+

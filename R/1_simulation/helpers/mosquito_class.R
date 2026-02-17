@@ -71,6 +71,21 @@ Mosquito <- function(boundary, lc_coefficients, spatial_range, rho, phi, land_co
   return(obj)
 }
 
+compute_mean_surface <- function(boundary, lc_coefficients, spatial_range, rho, phi, land_cover, n_iterations = 100) {
+    surfaces <- list()
+    for (i in 1:n_iterations) {
+        mosquito <- Mosquito(boundary = boundary,
+                            lc_coefficients = lc_coefficients,
+                            spatial_range = spatial_range,
+                            rho = rho,
+                            phi = phi,
+                            land_cover = land_cover,
+                            seed = i)
+        surfaces[[i]] <- mosquito@simulated_surface
+    }
+    mean_surface <- Reduce("+", surfaces) / n_iterations
+    return(list(surfaces = surfaces, mean_surface = mean_surface))
+}
 
 #beta <- c(0, 0.4567584, 1.5648494, 1.0986123, 1.8282377)
 # beta <- c(0.7351552, 2.588883, 1.775618, 1.612111, 1.156367) # Primary, Secondary, Oil Palm, Plantation, Built-up

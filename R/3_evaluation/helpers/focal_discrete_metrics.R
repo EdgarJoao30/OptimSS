@@ -152,6 +152,12 @@ rmse_focal_discrete_metrics <- function(sim, pred, w_size = 13) {
   )
 }
 
+# test delete
+
+sim_classified <- classify_raster_by_quantiles(sim)
+sim_mean_classified <- classify_raster_by_quantiles(mean_sim)
+plot(sim_classified[[1]])
+plot(sim_mean_classified[[1]])
 
 # Apply function
 start_time <- Sys.time()
