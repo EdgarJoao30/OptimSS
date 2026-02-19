@@ -58,5 +58,5 @@ local_metrics <- function(sim, pred) {
     return(kappa)
   })
   overall_kappa <- mean(unlist(kappa_coeffs), na.rm = TRUE)
-  return(list(rmse = overall_rmse, kappa = overall_kappa))
+  return(list(local_abundance_rmse = overall_rmse, local_kappa = overall_kappa))
 }

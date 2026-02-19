@@ -40,3 +40,16 @@ calculate_squared_diff <- function(freq_list1, freq_list2) {
     (freq_list1[[idx]] - freq_list2[[idx]])^2
   })
 }
+# Function to calculate kolmogorov-smirnov distances on patch level metrics
+# inputs are the outputs of calculate_lsm for the simulated and predicted rasters, and the name of the metric to compare
+calculate_ks_metric <- function(sim_metrics, pred_metrics, metric_name, n_layers) {
+  sim_metric <- sim_metrics |> filter(metric == metric_name)
+  pred_metric <- pred_metrics |> filter(metric == metric_name)
+  ks_results <- lapply(1:n_layers, function(i) {
+    sim_values <- sim_metric |> filter(layer == i) |> pull(value)
+    pred_values <- pred_metric |> filter(layer == i) |> pull(value)
+    ks_result <- ks.test(sim_values, pred_values)
+    return(ks_result$statistic)
+  })
+  return(ks_results |> unlist() |> mean())
+}

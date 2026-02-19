@@ -10,40 +10,40 @@
 #     - Nowosad J., TF Stepinski. 2019. Information theory as a consistent framework for quantification and classification of landscape patterns. https://doi.org/10.1007/s10980-019-00830-x 
 # - lsm_l_contig_mn: Mean patch contiguity (shape metric)
 #     - LaGro, J. 1991. Assessing patch shape in landscape mosaics. Photogrammetric Engineering and Remote Sensing, 57(3), 285-293
-packs <- c("tidyverse", "terra", "sf", "stars", "tidyterra", "patchwork", "landscapemetrics")
+packs <- c("tidyverse", "terra", "sf", "stars", "landscapemetrics")
 success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
 source('~/Documents/GitHub/OptimSS/R/3_evaluation/helpers/raster_management.R')
 
-sim <- rast("~/OneDrive - University of Glasgow/PhD/0_simulations/data/20250331_sim_raster001.tif")
-mean_sim <- rast("~/Documents/GitHub/OptimSS/data/1_raw/20260214_sim_raster001_mean.tif")
-a <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/a_15_allmonths.geojson") |>
-  dplyr::filter(variable == "pred_mean") |>
-  dplyr::select(month, value, geometry) |>
-  split(~month) |>
-  lapply(function(x) {
-    x |>
-      dplyr::select(value, geometry) |>
-      st_rasterize() |>
-      rast() |>
-      mask(sim[[1]])
-  }) |>
-  rast()  
+# sim <- rast("~/OneDrive - University of Glasgow/PhD/0_simulations/data/20250331_sim_raster001.tif")
+# mean_sim <- rast("~/Documents/GitHub/OptimSS/data/1_raw/20260214_sim_raster001_mean.tif")
+# a <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/a_15_allmonths.geojson") |>
+#   dplyr::filter(variable == "pred_mean") |>
+#   dplyr::select(month, value, geometry) |>
+#   split(~month) |>
+#   lapply(function(x) {
+#     x |>
+#       dplyr::select(value, geometry) |>
+#       st_rasterize() |>
+#       rast() |>
+#       mask(sim[[1]])
+#   }) |>
+#   rast()  
 
-i <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/i_15_allmonths.geojson") |>
-  dplyr::filter(variable == "pred_mean") |>
-  dplyr::select(month, value, geometry) |>
-  split(~month) |>
-  lapply(function(x) {
-    x |>
-      dplyr::select(value, geometry) |>
-      st_rasterize() |>
-      rast() |>
-      mask(sim[[1]])
-  }) |>
-  rast()
-pred <- a
+# i <- st_read("~/OneDrive - University of Glasgow/PhD/0_simulations/post_samples/anopheles/i_15_allmonths.geojson") |>
+#   dplyr::filter(variable == "pred_mean") |>
+#   dplyr::select(month, value, geometry) |>
+#   split(~month) |>
+#   lapply(function(x) {
+#     x |>
+#       dplyr::select(value, geometry) |>
+#       st_rasterize() |>
+#       rast() |>
+#       mask(sim[[1]])
+#   }) |>
+#   rast()
+
 focal_metrics <- function(sim, pred, w_size = 13) {
   ### Settings
   # Classify rasters by quantiles
@@ -112,17 +112,17 @@ focal_metrics <- function(sim, pred, w_size = 13) {
   overall_rmse_joinent <- mean(values(rmse_joinent), na.rm = TRUE)
   overall_rmse_contig_mn <- mean(values(rmse_contig_mn), na.rm = TRUE)
   list(
-    overall_rmse_window = overall_rmse,
-    overall_class_freq = overall_rmse_class_freq,
-    overall_joinent = overall_rmse_joinent,
-    overall_contig_mn = overall_rmse_contig_mn
+    focal_abundance_rmse = overall_rmse,
+    focal_classfreq_rmse = overall_rmse_class_freq,
+    focal_joinent_rmse = overall_rmse_joinent,
+    focal_contig_rmse = overall_rmse_contig_mn
   )
 }
 
 
 # Apply function
-start_time <- Sys.time()
-focal_metrics_i <- focal_metrics(sim, i, w_size = 27)
-end_time <- Sys.time()
-elapsed_time <- difftime(end_time, start_time, units = "secs")
-cat("Elapsed time:", elapsed_time, "seconds\n")
+# start_time <- Sys.time()
+# focal_metrics_i <- focal_metrics(sim, i, w_size = 27)
+# end_time <- Sys.time()
+# elapsed_time <- difftime(end_time, start_time, units = "secs")
+# cat("Elapsed time:", elapsed_time, "seconds\n")

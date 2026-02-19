@@ -1,13 +1,18 @@
 #################################################### Model fitting ###############################################################
-packs <- c("sf", "terra", "tidyverse", "raster", "INLA", "inlabru", "fmesher", "ModelMetrics")
+packs <- c("sf", "terra", "tidyverse", "raster", "INLA", "inlabru", "fmesher", "ModelMetrics", "parallel")
 success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
-source('~/Documents/GitHub/OptimSS/R/3_evaluation/helpers/summarize_model.R')
+source('~/Documents/GitHub/OptimSS/R/3_evaluation/helpers/metrics.R')
 # user inputs
 species <- commandArgs(trailingOnly = TRUE)[1]
 i <- as.numeric(commandArgs(trailingOnly = TRUE)[2])
 s <- as.numeric(commandArgs(trailingOnly = TRUE)[3])
+
+species <- "anopheles"
+i <- 1
+s <- 15
+
 print(paste0('Running species: ', species))
 print(paste0('Running sample size: ', s))
 print(paste0('Running iteration: ', i))
@@ -16,6 +21,7 @@ boundary <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/20240312_ROI_4326.shp
 landcover <- rast('~/Documents/GitHub/OptimSS/data/1_raw/aligned_landcover.tif')
 # Simulations
 simulations <- rast(paste0('~/Documents/GitHub/OptimSS/data/2_simulation/', species, '_sim.tif'))
+sim <- simulations
 simulations <- st_as_sf(as.data.frame(simulations, xy = TRUE), crs = 32650, coords = c('x', 'y'))
 lc_values <- terra::extract(landcover, simulations, xy = TRUE)
 simulations$cat_500m <- round(lc_values$Landcover_AllClass)
@@ -44,12 +50,12 @@ matern <- inla.spde2.pcmatern(mesh, alpha = 2,
 # Instead, we can either use model="factor_full" without an intercept, or model="factor_contrast", 
 # which does remove the first level.
 # https://inlabru-org.github.io/inlabru/articles/2d_lgcp_covars.html
-model <- sim_anoph ~ Intercept(1)  + 
+model <- sim ~ Intercept(1)  + 
   land_cover(cat_500m, model = 'factor_contrast') +
   field(geometry, model = matern, group = month, control.group = list(model = 'ar1'))
 
 print(paste0('Model definition: ', model[3]))
-
+start_time <- Sys.time()
 fit_list <- lapply(samples_list, function(sample) {
   bru(model, sample, family = "nbinomial",
       options = list(control.family = list(link = "log"), 
@@ -57,8 +63,56 @@ fit_list <- lapply(samples_list, function(sample) {
                      control.inla = list(int.strategy = "eb")
       ))
 })
+end_time <- Sys.time()
+elapsed_time <- difftime(end_time, start_time, units = "secs")
+cat("Elapsed time:", elapsed_time, "seconds\n")
 
-# 0.7351552, 2.588883, 1.775618, 1.612111, 1.156367
+start_time <- Sys.time()
+pred_list <- lapply(fit_list, function(fit) {
+  predict(fit, sim_long,
+          ~ {
+            mu <- exp(Intercept + land_cover + field)
+            
+            list(
+              mu = mu
+            )
+          },
+          n.samples = 1000
+  )
+})
+end_time <- Sys.time()
+elapsed_time <- difftime(end_time, start_time, units = "secs")
+cat("Elapsed time:", elapsed_time, "seconds\n")
+
+pred_raster <- lapply(1:9, function(scenarios) {
+  lapply(1:12, function(m) {
+    st_as_sf(pred_list[[scenarios]]$mu |> dplyr::filter(month == m), geometry = "geometry") |>
+      st_rasterize() |>
+      rast() |>
+      mask(landcover)
+  }) |> rast()
+})
+
+length(pred_raster)
+plot(pred_raster[[9]]['mean_mean'])
+
+class(pred_raster[[2]]['mean_mean'])
+names(pred_raster[[11]])
+
+start_time <- Sys.time()
+metrics_list <- mclapply(seq_along(scenarios), function(idx) {
+  metrics <- compute_metrics(sim, pred_raster[[idx]]['mean_mean'], w_size = 13)
+  df <- as.data.frame(metrics)
+  df$scenario <- scenarios[idx]
+  df
+}, mc.cores = 2)
+
+metrics_df <- bind_rows(metrics_list)
+end_time <- Sys.time()
+elapsed_time <- difftime(end_time, start_time, units = "secs")
+cat("Elapsed time:", elapsed_time, "seconds\n")
+
+
 
 # Extract mean and sd for fixed effects, random effects, and hyperparameters for each model in fit_list
 results_df <- do.call(rbind, lapply(seq_along(fit_list), summarize_model))
