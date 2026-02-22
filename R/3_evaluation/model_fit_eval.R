@@ -17,7 +17,7 @@ print(paste0('Running species: ', species))
 print(paste0('Running sample size: ', s))
 print(paste0('Running iteration: ', i))
 # Landcover
-boundary <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/20240312_ROI_4326.shp') |> st_union() |> st_transform(crs = 32650) 
+boundary <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/ROI_32650.geojson') |> st_union() 
 landcover <- rast('~/Documents/GitHub/OptimSS/data/1_raw/aligned_landcover.tif')
 # Simulations
 simulations <- rast(paste0('~/Documents/GitHub/OptimSS/data/2_simulation/', species, '_sim.tif'))
@@ -38,14 +38,10 @@ samples$cat_500m <- plyr::revalue(as.character(samples$land_cover),
 samples$cat_500m <- factor(samples$cat_500m, levels = c("A_Primary", "B_Secondary", "C_Oil", "D_Plantation", "E_Built"))
 # Sub-sampling scenarios
 scenarios <- c("a", "b", "c", "d", "e", "f", "g", "h", "i")
-samples_list <- lapply(scenarios, function(x) {
-  samples %>% dplyr::filter(iteration == i, scenario == x, sample_size == s)
-})
-names(samples_list) <- scenarios
 # INLA mesh and model definition
 mesh <- fm_mesh_2d(simulations, max.edge = c(2500, 5000), cutoff = 1000)
 matern <- inla.spde2.pcmatern(mesh, alpha = 2,
-                              prior.sigma = c(0.5, 0.01), prior.range = c(1000, 0.1))
+                              prior.sigma = c(0.5, 0.01), prior.range = c(3000, 0.1))
 # inlabru does not automatically remove the first level and absorb it into an intercept. 
 # Instead, we can either use model="factor_full" without an intercept, or model="factor_contrast", 
 # which does remove the first level.
@@ -55,62 +51,42 @@ model <- sim ~ Intercept(1)  +
   field(geometry, model = matern, group = month, control.group = list(model = 'ar1'))
 
 print(paste0('Model definition: ', model[3]))
-start_time <- Sys.time()
-fit_list <- lapply(samples_list, function(sample) {
-  bru(model, sample, family = "nbinomial",
+
+results_list <- lapply(scenarios, function(x) {
+  # x <- 'a'
+  sample <- samples %>% dplyr::filter(iteration == i, scenario == x, sample_size == s)
+  summary(sample)
+  fit <- bru(model, sample, family = "nbinomial",
       options = list(control.family = list(link = "log"), 
-                     #control.compute = list(dic = TRUE, cpo = TRUE, config = TRUE, waic = TRUE),
                      control.inla = list(int.strategy = "eb")
       ))
-})
-end_time <- Sys.time()
-elapsed_time <- difftime(end_time, start_time, units = "secs")
-cat("Elapsed time:", elapsed_time, "seconds\n")
-
-start_time <- Sys.time()
-pred_list <- lapply(fit_list, function(fit) {
-  predict(fit, sim_long,
-          ~ {
-            mu <- exp(Intercept + land_cover + field)
-            
-            list(
-              mu = mu
-            )
-          },
+  pred <- predict(fit, sim_long,
+          ~ list(mu = exp(Intercept + land_cover + field)),
           n.samples = 1000
   )
-})
-end_time <- Sys.time()
-elapsed_time <- difftime(end_time, start_time, units = "secs")
-cat("Elapsed time:", elapsed_time, "seconds\n")
+  head(pred$mu)
 
-pred_raster <- lapply(1:9, function(scenarios) {
-  lapply(1:12, function(m) {
-    st_as_sf(pred_list[[scenarios]]$mu |> dplyr::filter(month == m), geometry = "geometry") |>
+  pred_rasters <- lapply(1:12, function(m) {
+    pred$mu |>
+    dplyr::select(month, mean, q0.025, q0.975) |>
+      dplyr::filter(month == m) |>
+      st_as_sf(geometry = "geometry") |>
       st_rasterize() |>
       rast() |>
       mask(landcover)
-  }) |> rast()
+    })
+
+  mean_rasters <- lapply(pred_rasters, function(r) r[['mean_mean']]) |> rast()
+
+  metrics <- compute_metrics(sim, mean_rasters, w_size = 13) |>
+    as.data.frame() |>
+    mutate(scenario = x)
+
+  return(metrics)
 })
 
-length(pred_raster)
-plot(pred_raster[[9]]['mean_mean'])
-
-class(pred_raster[[2]]['mean_mean'])
-names(pred_raster[[11]])
-
-start_time <- Sys.time()
-metrics_list <- mclapply(seq_along(scenarios), function(idx) {
-  metrics <- compute_metrics(sim, pred_raster[[idx]]['mean_mean'], w_size = 13)
-  df <- as.data.frame(metrics)
-  df$scenario <- scenarios[idx]
-  df
-}, mc.cores = 2)
-
 metrics_df <- bind_rows(metrics_list)
-end_time <- Sys.time()
-elapsed_time <- difftime(end_time, start_time, units = "secs")
-cat("Elapsed time:", elapsed_time, "seconds\n")
+
 
 
 
