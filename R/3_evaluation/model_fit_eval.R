@@ -4,6 +4,7 @@ success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
 source('~/Documents/GitHub/OptimSS/R/3_evaluation/helpers/metrics.R')
+source('~/Documents/GitHub/OptimSS/R/3_evaluation/helpers/summarize_model.R')
 # user inputs
 species <- commandArgs(trailingOnly = TRUE)[1]
 i <- as.numeric(commandArgs(trailingOnly = TRUE)[2])
@@ -40,31 +41,43 @@ samples$cat_500m <- factor(samples$cat_500m, levels = c("A_Primary", "B_Secondar
 scenarios <- c("a", "b", "c", "d", "e", "f", "g", "h", "i")
 # INLA mesh and model definition
 mesh <- fm_mesh_2d(simulations, max.edge = c(2500, 5000), cutoff = 1000)
+# range being 1/10 the diagonal distance of the study area in meters
+range <- sqrt((st_bbox(boundary)[2] - st_bbox(boundary)[1])^2 + (st_bbox(boundary)[4] - st_bbox(boundary)[3])^2) / 10
+# sigma being 1/10 the standard deviation of the response variable in the sample data
+sigma <- sd(samples$sim, na.rm = TRUE) / 10
+# prior.sigma = c(1.5, 0.01) says there is a 1% chance the marginal SD is above 1.5.
+# prior.range = c(8000, 0.9) says there is a 90% chance the range is below 8000 m.
 matern <- inla.spde2.pcmatern(mesh, alpha = 2,
-                              prior.sigma = c(0.5, 0.01), prior.range = c(3000, 0.1))
+                              prior.sigma = c(sigma, 0.01), prior.range = c(range, 0.9))
 # inlabru does not automatically remove the first level and absorb it into an intercept. 
 # Instead, we can either use model="factor_full" without an intercept, or model="factor_contrast", 
 # which does remove the first level.
 # https://inlabru-org.github.io/inlabru/articles/2d_lgcp_covars.html
 model <- sim ~ Intercept(1)  + 
   land_cover(cat_500m, model = 'factor_contrast') +
-  field(geometry, model = matern, group = month, control.group = list(model = 'ar1'))
+  field(geometry, model = matern, group = month, 
+  control.group = list(model = 'ar1',
+  # Sets rho = 0 with 90% chance of being positive
+  hyper = list(rho = list(prior = 'pc.cor1', param = c(0, 0.9))))
+  )
 
 print(paste0('Model definition: ', model[3]))
 
 results_list <- lapply(scenarios, function(x) {
   # x <- 'a'
   sample <- samples %>% dplyr::filter(iteration == i, scenario == x, sample_size == s)
-  summary(sample)
   fit <- bru(model, sample, family = "nbinomial",
       options = list(control.family = list(link = "log"), 
                      control.inla = list(int.strategy = "eb")
       ))
+  
+  summ <- summarize_model(fit, scenario = x) |>
+    mutate(species = species, iteration = i, sample_size = s)
+
   pred <- predict(fit, sim_long,
           ~ list(mu = exp(Intercept + land_cover + field)),
           n.samples = 1000
   )
-  head(pred$mu)
 
   pred_rasters <- lapply(1:12, function(m) {
     pred$mu |>
@@ -80,73 +93,10 @@ results_list <- lapply(scenarios, function(x) {
 
   metrics <- compute_metrics(sim, mean_rasters, w_size = 13) |>
     as.data.frame() |>
-    mutate(scenario = x)
+    mutate(species = species, scenario = x, iteration = i, sample_size = s)
 
-  return(metrics)
+  return(list(metrics = metrics, summary = summ))
 })
 
-metrics_df <- bind_rows(metrics_list)
-
-
-
-
-# Extract mean and sd for fixed effects, random effects, and hyperparameters for each model in fit_list
-results_df <- do.call(rbind, lapply(seq_along(fit_list), summarize_model))
-results_df$iteration <- i
-results_df$sample_size <- s
-
-# Reset rownames for the final data frame
-rownames(results_df) <- NULL
-
-save(fit_list, file = paste0("/Volumes/Aedes/PhD/models/", "fitted_s", s, "_i", i ,".RData"))
-
-print('DONE! with model fitting')
-
-pred_list <- lapply(fit_list, function(fit) {
-  predict(fit, sim_long,
-          ~ {
-            mu <- exp(Intercept + land_cover + field)
-            predicted <- rnbinom(n = nrow(sim_long), size = fit$summary.hyperpar$mean[1], mu = mu)
-            rmse <- ModelMetrics::rmse(sim, predicted)
-
-            list(
-              mu = mu,
-              predicted = predicted,
-              rmse = rmse
-            )
-          },
-          n.samples = 1000
-  )
-})
-
-# Add RMSE values to results_df
-
-results_df <- lapply(seq_along(pred_list), function(idx) {
-  means <- pred_list[[idx]]$rmse$mean
-  sds <- pred_list[[idx]]$rmse$sd
-  
-  df <- results_df %>% dplyr::filter(Scenario == scenarios[idx])
-  
-  row <- df[1, ]
-  row$Effect <- "rmse"
-  row$Mean <- means
-  row$SD <- sds
-  row$Type <- "Error"
-  
-  rbind(df, row)
-}) %>% bind_rows()
-
-write.csv(results_df, paste0("/Volumes/Aedes/PhD/results/", 'summary_s', s, '_i', i, '.csv'))
-
-print('DONE! predicting!')
-
-samp_list <- lapply(fit_list, function(fit) {
-  generate(fit, sim_long,
-          ~ exp(Intercept + land_cover + field),
-          n.samples = 1000
-  )
-})
-
-save(samp_list, file = paste0("/Volumes/Aedes/PhD/post_samples/", "post_s", s, "_i", i ,".RData"))
-
-print('DONE! sampling!')
+metrics_df <- bind_rows(results_list$metrics)
+summ_df <- bind_rows(results_list$summary)

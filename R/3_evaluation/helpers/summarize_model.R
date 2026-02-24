@@ -1,6 +1,4 @@
-summarize_model <- function(i) {
-  fit <- fit_list[[i]]
-  scenarios <- c("a", "b", "c", "d", "e", "f", "g", "h", "i")
+summarize_model <- function(fit, scenario) {
   # Extract fixed effects
   fixed_effects <- data.frame(
     Effect = rownames(fit$summary.fixed),
@@ -30,9 +28,9 @@ summarize_model <- function(i) {
   
   # Combine all effects into a single data frame
   combined_df <- rbind(
-    cbind(fixed_effects, Scenario = scenarios[i], time_s = t),
-    cbind(random_effects, Scenario = scenarios[i], time_s = t),
-    cbind(hyperparameters, Scenario = scenarios[i], time_s = t)
+    cbind(fixed_effects, Scenario = scenario, time_s = t),
+    cbind(random_effects, Scenario = scenario, time_s = t),
+    cbind(hyperparameters, Scenario = scenario, time_s = t)
   )
   
   combined_df
