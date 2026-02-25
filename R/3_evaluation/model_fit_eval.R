@@ -18,10 +18,10 @@ print(paste0('Running species: ', species))
 print(paste0('Running sample size: ', s))
 print(paste0('Running iteration: ', i))
 # Landcover
-boundary <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/ROI_32650.geojson') |> st_union() 
-landcover <- rast('~/Documents/GitHub/OptimSS/data/1_raw/aligned_landcover.tif')
+boundary <- st_read('~/Documents/GitHub/OptimSS/data/1_raw/ROI_32650.geojson', quiet = TRUE) |> st_union() 
+landcover <- rast('~/Documents/GitHub/OptimSS/data/1_raw/aligned_landcover.tif', quiet = TRUE)
 # Simulations
-simulations <- rast(paste0('~/Documents/GitHub/OptimSS/data/2_simulation/', species, '_sim.tif'))
+simulations <- rast(paste0('~/Documents/GitHub/OptimSS/data/2_simulation/', species, '_sim.tif'), quiet = TRUE)
 sim <- simulations
 simulations <- st_as_sf(as.data.frame(simulations, xy = TRUE), crs = 32650, coords = c('x', 'y'))
 lc_values <- terra::extract(landcover, simulations, xy = TRUE)
@@ -33,10 +33,25 @@ sim_long <- simulations %>%
   pivot_longer(cols = -c(cat_500m:geometry), names_to = 'month', values_to = 'sim') %>%
   mutate(month = match(month, tolower(month.abb)))
 # Samples
-samples <- st_read(paste0('~/Documents/GitHub/OptimSS/data/3_sampling/', species, '_sampling.geojson'))
-samples$cat_500m <- plyr::revalue(as.character(samples$land_cover), 
-                                  c("0" = "C_Oil", "1" = "B_Secondary", "2" = "A_Primary", "3" = "D_Plantation", "4" = "E_Built"))
-samples$cat_500m <- factor(samples$cat_500m, levels = c("A_Primary", "B_Secondary", "C_Oil", "D_Plantation", "E_Built"))
+query_sql <- sprintf(
+  "SELECT * FROM %s_sampling WHERE iteration = %s AND sample_size = %s",
+  species, i, s
+)
+samples <- st_read(
+  dsn = paste0('~/Documents/GitHub/OptimSS/data/3_sampling/', species, '_sampling.geojson'),
+  query = query_sql,
+  quiet = TRUE # Optional: silences the driver output
+)
+samples <- samples |>
+  mutate(
+    cat_500m = factor(
+      recode(as.character(land_cover), 
+             "0" = "C_Oil", "1" = "B_Secondary", "2" = "A_Primary", 
+             "3" = "D_Plantation", "4" = "E_Built"),
+      levels = c("A_Primary", "B_Secondary", "C_Oil", "D_Plantation", "E_Built")
+    ) 
+  ) |> 
+  rename(geometry = `_ogr_geometry_`)
 # Sub-sampling scenarios
 scenarios <- c("a", "b", "c", "d", "e", "f", "g", "h", "i")
 # INLA mesh and model definition
@@ -56,38 +71,41 @@ matern <- inla.spde2.pcmatern(mesh, alpha = 2,
 model <- sim ~ Intercept(1)  + 
   land_cover(cat_500m, model = 'factor_contrast') +
   field(geometry, model = matern, group = month, 
-  control.group = list(model = 'ar1',
-  # Sets rho = 0 with 90% chance of being positive
-  hyper = list(rho = list(prior = 'pc.cor1', param = c(0, 0.9))))
+    control.group = list(model = 'ar1',
+                         # Sets rho = 0 with 90% chance of being positive
+                         hyper = list(rho = list(prior = 'pc.cor1', param = c(0, 0.9))))
   )
-
-print(paste0('Model definition: ', model[3]))
 
 results_list <- lapply(scenarios, function(x) {
   # x <- 'a'
-  sample <- samples %>% dplyr::filter(iteration == i, scenario == x, sample_size == s)
+  sample <- samples %>% dplyr::filter(scenario == x)
+  # Drop unused levels from the factor
+  sample$cat_500m <- droplevels(as.factor(sample$cat_500m))
+
   fit <- bru(model, sample, family = "nbinomial",
-      options = list(control.family = list(link = "log"), 
-                     control.inla = list(int.strategy = "eb")
-      ))
+             options = list(control.family = list(link = "log"), 
+               control.inla = list(int.strategy = "eb")
+             ))
   
   summ <- summarize_model(fit, scenario = x) |>
-    mutate(species = species, iteration = i, sample_size = s)
+    mutate(species = species, iteration = i, sample_size = s) |> 
+    select(species, scenario, sample_size, iteration, effect, mean) |>
+    pivot_wider(names_from = effect, values_from = mean) 
 
   pred <- predict(fit, sim_long,
-          ~ list(mu = exp(Intercept + land_cover + field)),
-          n.samples = 1000
+    ~ list(mu = exp(Intercept + land_cover + field)),
+    n.samples = 1000
   )
 
   pred_rasters <- lapply(1:12, function(m) {
     pred$mu |>
-    dplyr::select(month, mean, q0.025, q0.975) |>
+      dplyr::select(month, mean, q0.025, q0.975) |>
       dplyr::filter(month == m) |>
       st_as_sf(geometry = "geometry") |>
       st_rasterize() |>
       rast() |>
       mask(landcover)
-    })
+  })
 
   mean_rasters <- lapply(pred_rasters, function(r) r[['mean_mean']]) |> rast()
 
@@ -95,8 +113,8 @@ results_list <- lapply(scenarios, function(x) {
     as.data.frame() |>
     mutate(species = species, scenario = x, iteration = i, sample_size = s)
 
-  return(list(metrics = metrics, summary = summ))
+  all_metrics <- cbind(summ, metrics  |> dplyr::select(-species, -scenario, -iteration, -sample_size))
+  return(all_metrics)
 })
 
-metrics_df <- bind_rows(results_list$metrics)
-summ_df <- bind_rows(results_list$summary)
+metrics_df <- results_list |> bind_rows()

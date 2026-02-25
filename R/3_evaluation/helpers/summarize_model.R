@@ -1,26 +1,26 @@
 summarize_model <- function(fit, scenario) {
   # Extract fixed effects
   fixed_effects <- data.frame(
-    Effect = rownames(fit$summary.fixed),
-    Mean = fit$summary.fixed$mean,
-    SD = fit$summary.fixed$sd,
-    Type = "Fixed"
+    effect = rownames(fit$summary.fixed),
+    mean = fit$summary.fixed$mean,
+    sd = fit$summary.fixed$sd,
+    type = "Fixed"
   )
   
   # Extract random effects
   random_effects <- data.frame(
-    Effect = fit$summary.random$land_cover$ID,
-    Mean = fit$summary.random$land_cover$mean,
-    SD = fit$summary.random$land_cover$sd,
-    Type = "Random"
+    effect = fit$summary.random$land_cover$ID,
+    mean = fit$summary.random$land_cover$mean,
+    sd = fit$summary.random$land_cover$sd,
+    type = "Random"
   )
   
   # Extract hyperparameters
   hyperparameters <- data.frame(
-    Effect = rownames(fit$summary.hyperpar),
-    Mean = fit$summary.hyperpar$mean,
-    SD = fit$summary.hyperpar$sd,
-    Type = "Hyperparameter"
+    effect = rownames(fit$summary.hyperpar),
+    mean = fit$summary.hyperpar$mean,
+    sd = fit$summary.hyperpar$sd,
+    type = "Hyperparameter"
   )
   
   # timing 
@@ -28,9 +28,9 @@ summarize_model <- function(fit, scenario) {
   
   # Combine all effects into a single data frame
   combined_df <- rbind(
-    cbind(fixed_effects, Scenario = scenario, time_s = t),
-    cbind(random_effects, Scenario = scenario, time_s = t),
-    cbind(hyperparameters, Scenario = scenario, time_s = t)
+    cbind(fixed_effects, scenario = scenario, time_s = t),
+    cbind(random_effects, scenario = scenario, time_s = t),
+    cbind(hyperparameters, scenario = scenario, time_s = t)
   )
   
   combined_df

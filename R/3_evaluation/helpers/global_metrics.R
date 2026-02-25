@@ -53,7 +53,13 @@ global_metrics <- function(sim, pred) {
               global_contig_rmse = contig_rmse,
               global_area_ks = ks_area,
               global_enn_ks = ks_enn,
-              global_frac_ks = ks_frac))
+              global_frac_ks = ks_frac,
+              global_sim_abundance = mean(sim_mean),
+              global_pred_abundance = mean(pred_mean),
+              global_sim_contig = mean(sim_contig_mn),
+              global_pred_contig = mean(pred_contig_mn),
+              global_sim_joinent = mean(sim_joinent),
+              global_pred_joinent = mean(pred_joinent)))
 }
 
 # test
