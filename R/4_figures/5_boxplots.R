@@ -28,16 +28,16 @@ anopheles_true_df$global.global_pred_joinent <- unique(anopheles_data$global.glo
 colnames(df)
 
 (g_an <- ggplot(data = df |> filter(species == "anopheles"), 
-                aes(x = as.factor(scenario), y = global.global_frac_ks)) +
+                aes(x = as.factor(scenario), y = focal.focal_joinent_rmse)) +
     scale_colour_identity() +
     geom_boxplot() +
     facet_grid(sample_size ~ ., scales = "fixed") +
     labs(
       title = expression(italic("(a) Anopheles balabacensis")),
       x = "Scenario",
-      y = "RMSE of global abundance"
+      y = "RMSE of focal abundance"
     ) +
     theme_minimal(base_family = 'Times New Roman', base_size = 12) +
-    ylim(0, .5) +
+    ylim(0, .75) +
     NULL
 )
