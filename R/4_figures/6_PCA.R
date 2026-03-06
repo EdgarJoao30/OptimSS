@@ -36,16 +36,14 @@ anopheles_true_df <- anopheles_true_df |>
     global.global_joinent_rmse = 0
   )
 
-# 
-df_clean <- na.omit(df)
+# Keep failed samples (NA estimates) and handle them explicitly downstream.
+df_clean <- df
 # remove rows with outliers
-df_clean <- df_clean |> filter(focal.focal_abundance_rmse < 15)
+df_clean <- df_clean |> filter(is.na(focal.focal_abundance_rmse) | focal.focal_abundance_rmse < 15)
 # remove rows with outliers in Range for field
-df_clean <- df_clean |> filter(`Range for field` < 5000)
+df_clean <- df_clean |> filter(is.na(`Range for field`) | `Range for field` < 5000)
 df_anopheles <- df_clean |> dplyr::filter(species == "anopheles", sample_size == 15) 
 labels <- df_anopheles$scenario
-# add True map as a label
-labels <- c(labels, "True_Map")
 # Global metrics
 metrics_global <- df_anopheles |> dplyr::select(A_Primary_abundance, B_Secondary_abundance, C_Oil_abundance, D_Plantation_abundance, E_Built_abundance,
                                   `size for the nbinomial observations (1/overdispersion)`, `Range for field`, `Stdev for field`, `GroupRho for field`,
@@ -59,12 +57,35 @@ metrics_global$E_Built_abundance <- abs(metrics_global$E_Built_abundance - anoph
 metrics_global$`size for the nbinomial observations (1/overdispersion)` <- abs(metrics_global$`size for the nbinomial observations (1/overdispersion)` - anopheles_true_df$`size for the nbinomial observations (1/overdispersion)`)
 metrics_global$`Range for field` <- abs(metrics_global$`Range for field` - anopheles_true_df$`Range for field`)
 metrics_global$`Stdev for field` <- abs(metrics_global$`Stdev for field` - anopheles_true_df$`Stdev for field`)
+metrics_global$`GroupRho for field` <- abs(metrics_global$`GroupRho for field` - anopheles_true_df$`GroupRho for field`)
 # Local and focal metrics
 metrics_local <- df_anopheles |> dplyr::select(local.local_abundance_rmse, 
                                                focal.focal_abundance_rmse,
                                                focal.focal_contig_rmse,
                                                focal.focal_joinent_rmse, 
                                                focal.focal_classfreq_rmse)
+
+# Missing estimates represent sampling limitations; track and penalize them.
+metrics_global_na_count <- rowSums(is.na(metrics_global))
+
+impute_with_penalty <- function(df_metrics, multiplier = 1.10) {
+  df_out <- df_metrics
+  for (j in seq_along(df_out)) {
+    col_vals <- df_out[[j]]
+    col_max <- suppressWarnings(max(col_vals, na.rm = TRUE))
+    if (!is.finite(col_max)) {
+      col_max <- 1
+    }
+    penalty_val <- col_max * multiplier
+    col_vals[is.na(col_vals)] <- penalty_val
+    df_out[[j]] <- col_vals
+  }
+  df_out
+}
+
+metrics_global <- impute_with_penalty(metrics_global)
+
+metrics_global$failed_metric_count <- metrics_global_na_count
 
 # true map row for global metrics
 true_map_row_global <- data.frame(
@@ -79,7 +100,8 @@ true_map_row_global <- data.frame(
   "GroupRho for field" = 0,
   global.global_abundance_rmse = 0,
   global.global_contig_rmse = 0,
-  global.global_joinent_rmse = 0
+  global.global_joinent_rmse = 0,
+  failed_metric_count = 0
 )
 colnames(true_map_row_global) <- colnames(metrics_global)
 
@@ -93,31 +115,18 @@ true_map_row_local <- data.frame(
 )
 colnames(true_map_row_local) <- colnames(metrics_local)
 
-metrics_global <- rbind(metrics_global, true_map_row_global)
-metrics_local <- rbind(metrics_local, true_map_row_local)
-
-# add the true map metrics to the metrics data frame
-# metrics <- rbind(metrics, anopheles_true_df)
-# check correlation between metrics
-cor_matrix <- cor(metrics_local)
-print(cor_matrix)
-# plot correlation matrix
-cor_matrix_long <- as.data.frame(as.table(cor_matrix))
-ggplot(cor_matrix_long, aes(Var1, Var2, fill = Freq)) +
-  geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab",
-                       name="Correlation") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1)) +
-  coord_fixed()
-# drop columns that are highly correlated with each other (correlation > 0.9)
-# metrics <- metrics |> dplyr::select(-global.global_pred_abundance, -global.global_pred_contig, -global.global_pred_joinent)
-# metrics <- metrics |> dplyr::select(`size for the nbinomial observations (1/overdispersion)`:global.global_pred_joinent)
 # Run PCA
 # center = TRUE and scale. = TRUE 
 # This standardizes metrics, aligning with Mahalanobis logic.
 pca_res_global <- prcomp(metrics_global, center = TRUE, scale. = TRUE)
 pca_res_local <- prcomp(metrics_local, center = TRUE, scale. = TRUE)
+
+# Project the true map as a supplementary point so it does not affect PCA rotation.
+true_global_scaled <- scale(true_map_row_global, center = pca_res_global$center, scale = pca_res_global$scale)
+true_local_scaled <- scale(true_map_row_local, center = pca_res_local$center, scale = pca_res_local$scale)
+true_global_scores <- true_global_scaled %*% pca_res_global$rotation
+true_local_scores <- true_local_scaled %*% pca_res_local$rotation
+
 # Extract PC coordinates and calculate variance explained
 pca_data_global <- data.frame(
   Design = labels,
@@ -125,11 +134,30 @@ pca_data_global <- data.frame(
   PC2 = pca_res_global$x[, 2],
   PC3 = pca_res_global$x[, 3]
 )
+pca_data_global <- rbind(
+  pca_data_global,
+  data.frame(
+    Design = "True_Map",
+    PC1 = true_global_scores[1, 1],
+    PC2 = true_global_scores[1, 2],
+    PC3 = true_global_scores[1, 3]
+  )
+)
+
 pca_data_local <- data.frame(
   Design = labels,
   PC1 = pca_res_local$x[, 1],
   PC2 = pca_res_local$x[, 2],
   PC3 = pca_res_local$x[, 3]
+)
+pca_data_local <- rbind(
+  pca_data_local,
+  data.frame(
+    Design = "True_Map",
+    PC1 = true_local_scores[1, 1],
+    PC2 = true_local_scores[1, 2],
+    PC3 = true_local_scores[1, 3]
+  )
 )
 
 # Calculate percentage of variance explained for the axes
@@ -155,8 +183,77 @@ my_palette <- c(
   "i" = '#08a124'
 )
 nrow(pca_data_global)
-pca_data <- cbind(pca_data_global |> dplyr::select(Design, Is_True_Map, PC1) |> rename(PC1_global = PC1), 
-                  pca_data_local |> dplyr::select(PC1_local = PC1))
+pca_data <- cbind(pca_data_global |>
+  dplyr::select(Design, Is_True_Map, PC1_global = PC1), 
+  pca_data_local |> dplyr::select(PC1_local = PC1))
+
+# Mahalanobis distance score (lower is better; true map should be near 0).
+mahalanobis_safe <- function(x, center_point, tol = 1e-8) {
+  x <- as.matrix(x)
+  center_point <- as.numeric(center_point)
+  cov_mat <- cov(x)
+
+  # Robust inverse for singular/ill-conditioned covariance via eigenvalue flooring.
+  eig <- eigen(cov_mat, symmetric = TRUE)
+  eig_vals <- pmax(eig$values, tol)
+  cov_inv <- eig$vectors %*% diag(1 / eig_vals) %*% t(eig$vectors)
+
+  centered <- sweep(x, 2, center_point, FUN = "-")
+  distances <- rowSums((centered %*% cov_inv) * centered)
+
+  list(
+    strategies = distances,
+    center = center_point,
+    cov_inv = cov_inv
+  )
+}
+
+global_md <- mahalanobis_safe(metrics_global, center_point = rep(0, ncol(metrics_global)))
+local_md <- mahalanobis_safe(metrics_local, center_point = rep(0, ncol(metrics_local)))
+
+strategy_scores <- data.frame(
+  Design = labels,
+  score_global = sqrt(global_md$strategies),
+  score_local = sqrt(local_md$strategies)
+)
+
+true_global_centered <- as.matrix(true_map_row_global) - matrix(global_md$center, nrow = 1)
+true_local_centered <- as.matrix(true_map_row_local) - matrix(local_md$center, nrow = 1)
+true_global_dist <- sqrt(rowSums((true_global_centered %*% global_md$cov_inv) * true_global_centered))
+true_local_dist <- sqrt(rowSums((true_local_centered %*% local_md$cov_inv) * true_local_centered))
+
+performance_scores <- rbind(
+  strategy_scores,
+  data.frame(
+    Design = "True_Map",
+    score_global = true_global_dist,
+    score_local = true_local_dist,
+    score_total = NA_real_
+  )
+)
+
+# Normalize component scores so global and local/focal contribute equally.
+normalize_component <- function(x) {
+  rng <- range(x, na.rm = TRUE)
+  if ((rng[2] - rng[1]) == 0) {
+    return(rep(0, length(x)))
+  }
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+
+performance_scores <- performance_scores |>
+  mutate(
+    score_global_norm = normalize_component(score_global),
+    score_local_norm = normalize_component(score_local),
+    score_total = sqrt(score_global_norm^2 + score_local_norm^2)
+  ) |>
+  arrange(score_total)
+
+print(performance_scores)
+
+performance_mean <- performance_scores %>%
+  group_by(Design) %>%
+  summarise(across(starts_with("score"), mean))
 
 create_pca_plot <- function(x_var, y_var, x_label, y_label) {
   ggplot(pca_data, aes(x = .data[[x_var]], y = .data[[y_var]], 
@@ -176,12 +273,21 @@ p1 <- create_pca_plot("PC1_global", "PC1_local",
       # theme(legend.position = "none") +
       NULL
 
-p2 <- create_pca_plot("PC3", "PC2", 
-                      paste0("PC3 (", var_explained[3], "%)"),
-                      paste0("PC2 (", var_explained[2], "%)"))
+score_plot_data <- performance_scores |>
+  mutate(Is_True_Map = ifelse(Design == "True_Map", "Yes", "No"))
+
+p2 <- ggplot(score_plot_data, aes(x = score_global, y = score_local,
+                                  color = Design, shape = Is_True_Map, size = Is_True_Map)) +
+  geom_point(alpha = 0.8) +
+  scale_shape_manual(values = c("No" = 16, "Yes" = 8)) +
+  scale_size_manual(values = c("No" = 3, "Yes" = 8)) +
+  scale_color_manual(values = my_palette) +
+  labs(x = "Global Mahalanobis distance", y = "Local/focal Mahalanobis distance") +
+  theme_minimal() +
+  guides(shape = "none", size = "none")
 
 combined_plot <- p1 + p2 + 
   plot_annotation(
     title = "Multidimensional Performance of Sampling Designs",
-    subtitle = "Proximity to the True Map (Black Star) indicates higher accuracy"
+    subtitle = "Left: PCA alignment between global and local/focal performance. Right: explicit distance-based error ranking."
   )
