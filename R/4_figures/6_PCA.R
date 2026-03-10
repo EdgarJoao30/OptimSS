@@ -1,4 +1,4 @@
-packs <- c("tidyverse", "RColorBrewer", "patchwork")
+packs <- c("tidyverse", "RColorBrewer", "patchwork", "ggside")
 success <- suppressWarnings(sapply(packs, require, character.only = TRUE))
 install.packages(names(success)[!success])
 sapply(names(success)[!success], require, character.only = TRUE)
@@ -42,8 +42,9 @@ df_clean <- df
 df_clean <- df_clean |> filter(is.na(focal.focal_abundance_rmse) | focal.focal_abundance_rmse < 15)
 # remove rows with outliers in Range for field
 df_clean <- df_clean |> filter(is.na(`Range for field`) | `Range for field` < 5000)
-df_anopheles <- df_clean |> dplyr::filter(species == "anopheles", sample_size == 15) 
+df_anopheles <- df_clean |> dplyr::filter(species == "anopheles") 
 labels <- df_anopheles$scenario
+sample_sizes <- df_anopheles$sample_size
 # Global metrics
 metrics_global <- df_anopheles |> dplyr::select(A_Primary_abundance, B_Secondary_abundance, C_Oil_abundance, D_Plantation_abundance, E_Built_abundance,
                                   `size for the nbinomial observations (1/overdispersion)`, `Range for field`, `Stdev for field`, `GroupRho for field`,
@@ -65,7 +66,7 @@ metrics_local <- df_anopheles |> dplyr::select(local.local_abundance_rmse,
                                                focal.focal_joinent_rmse, 
                                                focal.focal_classfreq_rmse)
 
-# Missing estimates represent sampling limitations; track and penalize them.
+# Missing estimates represent sampling limitations
 metrics_global_na_count <- rowSums(is.na(metrics_global))
 
 impute_with_penalty <- function(df_metrics, multiplier = 1.10) {
@@ -130,6 +131,7 @@ true_local_scores <- true_local_scaled %*% pca_res_local$rotation
 # Extract PC coordinates and calculate variance explained
 pca_data_global <- data.frame(
   Design = labels,
+  Sample_size = sample_sizes,
   PC1 = pca_res_global$x[, 1],
   PC2 = pca_res_global$x[, 2],
   PC3 = pca_res_global$x[, 3]
@@ -138,6 +140,7 @@ pca_data_global <- rbind(
   pca_data_global,
   data.frame(
     Design = "True_Map",
+    Sample_size = 51,
     PC1 = true_global_scores[1, 1],
     PC2 = true_global_scores[1, 2],
     PC3 = true_global_scores[1, 3]
@@ -146,6 +149,7 @@ pca_data_global <- rbind(
 
 pca_data_local <- data.frame(
   Design = labels,
+  Sample_size = sample_sizes,
   PC1 = pca_res_local$x[, 1],
   PC2 = pca_res_local$x[, 2],
   PC3 = pca_res_local$x[, 3]
@@ -154,6 +158,7 @@ pca_data_local <- rbind(
   pca_data_local,
   data.frame(
     Design = "True_Map",
+    Sample_size = 51,
     PC1 = true_local_scores[1, 1],
     PC2 = true_local_scores[1, 2],
     PC3 = true_local_scores[1, 3]
@@ -169,24 +174,46 @@ pca_data_global <- pca_data_global %>%
   mutate(Is_True_Map = ifelse(Design == "True_Map", "Yes", "No"))
 pca_data_local <- pca_data_local %>%
   mutate(Is_True_Map = ifelse(Design == "True_Map", "Yes", "No"))
-# Plot
-my_palette <- c(
-  "True_Map" = "black",              
-  "a" = '#686ea6',
-  "b" = '#3842a1',
-  "c" = '#0716a3',
-  "d" = '#eba5a0',
-  "e" = '#e3685f',
-  "f" = '#e61a0b',
-  "g" = '#6da879',
-  "h" = '#3a9e4d',
-  "i" = '#08a124'
-)
-nrow(pca_data_global)
+
 pca_data <- cbind(pca_data_global |>
-  dplyr::select(Design, Is_True_Map, PC1_global = PC1), 
+  dplyr::select(Design, Sample_size, Is_True_Map, PC1_global = PC1), 
   pca_data_local |> dplyr::select(PC1_local = PC1))
 
+
+
+pca_data <- pca_data %>%
+  mutate(space = case_when(
+    Design == "True_Map" ~ "True_Map",
+    Design %in% c("a", "d", "g") ~ "Lattice",
+    Design %in% c("b", "e", "h") ~ "Stratified",
+    Design %in% c("c", "f", "i") ~ "Random",
+    TRUE ~ "Other"
+  ),
+  time = case_when(
+    Design == "True_Map" ~ "True_Map",
+    Design %in% c("a", "b", "c") ~ "Static",
+    Design %in% c("d", "e", "f") ~ "Rotational",
+    Design %in% c("g", "h", "i") ~ "Variable",
+    TRUE ~ "Other"
+  ))
+
+# Keep a balanced subset per time-space-sample size combination.
+n_per_group <- 10
+sample_by_group <- function(df, n = 30) {
+  df |>
+    group_by(time, space, Sample_size) |>
+    slice_sample(n =n) |>
+    ungroup()
+}
+
+pca_data_plot <- pca_data |>
+  filter(Design == "True_Map") |>
+  bind_rows(
+    pca_data |>
+      filter(Design != "True_Map") |>
+      sample_by_group(n = n_per_group)
+  )
+head(pca_data_plot)
 # Mahalanobis distance score (lower is better; true map should be near 0).
 mahalanobis_safe <- function(x, center_point, tol = 1e-8) {
   x <- as.matrix(x)
@@ -213,8 +240,10 @@ local_md <- mahalanobis_safe(metrics_local, center_point = rep(0, ncol(metrics_l
 
 strategy_scores <- data.frame(
   Design = labels,
+  Sample_size = sample_sizes,
   score_global = sqrt(global_md$strategies),
-  score_local = sqrt(local_md$strategies)
+  score_local = sqrt(local_md$strategies),
+  score_total = NA_real_
 )
 
 true_global_centered <- as.matrix(true_map_row_global) - matrix(global_md$center, nrow = 1)
@@ -226,6 +255,7 @@ performance_scores <- rbind(
   strategy_scores,
   data.frame(
     Design = "True_Map",
+    Sample_size = 50,
     score_global = true_global_dist,
     score_local = true_local_dist,
     score_total = NA_real_
@@ -249,45 +279,69 @@ performance_scores <- performance_scores |>
   ) |>
   arrange(score_total)
 
+design_groups <- pca_data |>
+  dplyr::select(Design, Sample_size, time, space) |>
+  distinct()
+
+performance_scores <- performance_scores |>
+  left_join(design_groups, by = c("Design", "Sample_size"))
+
 print(performance_scores)
 
 performance_mean <- performance_scores %>%
   group_by(Design) %>%
   summarise(across(starts_with("score"), mean))
 
-create_pca_plot <- function(x_var, y_var, x_label, y_label) {
-  ggplot(pca_data, aes(x = .data[[x_var]], y = .data[[y_var]], 
-                       color = Design, shape = Is_True_Map, size = Is_True_Map)) +
-    geom_point(alpha = 0.8) +
-    scale_shape_manual(values = c("No" = 16, "Yes" = 8)) + 
-    scale_size_manual(values = c("No" = 3, "Yes" = 8)) +
-    scale_color_manual(values = my_palette) + 
-    labs(x = x_label, y = y_label) +
-    theme_minimal() +
-    guides(shape = "none", size = "none")
-}
 
-p1 <- create_pca_plot("PC1_global", "PC1_local", 
-                      paste0("PC1 Global (", var_explained_global[1], "%)"), 
-                      paste0("PC1 Local (", var_explained_local[1], "%)")) +
-      # theme(legend.position = "none") +
-      NULL
 
-score_plot_data <- performance_scores |>
-  mutate(Is_True_Map = ifelse(Design == "True_Map", "Yes", "No"))
 
-p2 <- ggplot(score_plot_data, aes(x = score_global, y = score_local,
-                                  color = Design, shape = Is_True_Map, size = Is_True_Map)) +
-  geom_point(alpha = 0.8) +
-  scale_shape_manual(values = c("No" = 16, "Yes" = 8)) +
-  scale_size_manual(values = c("No" = 3, "Yes" = 8)) +
-  scale_color_manual(values = my_palette) +
-  labs(x = "Global Mahalanobis distance", y = "Local/focal Mahalanobis distance") +
-  theme_minimal() +
-  guides(shape = "none", size = "none")
 
-combined_plot <- p1 + p2 + 
-  plot_annotation(
-    title = "Multidimensional Performance of Sampling Designs",
-    subtitle = "Left: PCA alignment between global and local/focal performance. Right: explicit distance-based error ranking."
-  )
+
+############
+species <- "aedes"
+pca_data <- read.csv(paste0('~/Documents/GitHub/OptimSS/data/4_results/pca_data_', species, '.csv')) 
+
+ss.labs <- c("Sample size: 5", "Sample size: 10", "Sample size: 15", "Sample size: 25", "Sample size: 50")
+names(ss.labs) <- c("5", "10", "15", "25", "50")
+space.labs <- c("Space design: Lattice", "Space design: Stratified", "Space design: Random")
+names(space.labs) <- c("Lattice", "Stratified", "Random")
+
+(g <- ggplot(
+  pca_data |> filter(Design != "True_Map") |>
+  mutate(space = factor(space, levels = c("Lattice", "Stratified", "Random")),
+         time = factor(time, levels = c("Static", "Rotational", "Variable"))),
+  aes(x = PC1_global, y = PC1_local, color = time)
+) +
+  geom_point(data = pca_data |> filter(Design != "True_Map") |> select(-space, -Sample_size), colour = "gray85", alpha = 0.5) + 
+  geom_point(alpha = 0.5) +
+  scale_color_brewer(palette = "Set2") +
+  scale_fill_brewer(palette = "Set2") +
+  geom_text(
+      data = pca_data |> filter(Design == "True_Map") |> slice(rep(1, 15)) |> 
+      mutate(Sample_size = rep(c(5, 10, 15, 25, 50), 3),
+      space = c(rep("Lattice", 5), rep("Stratified", 5), rep("Random", 5))),
+      aes(x = PC1_global, y = PC1_local),
+      label = "*",
+      size = 8,
+      color = "red"
+    ) +
+  facet_grid(factor(space, levels = c("Lattice", "Stratified", "Random"), labels = space.labs) ~ Sample_size,
+  labeller = labeller(Sample_size = ss.labs, space = space.labs)) +
+  theme_minimal(base_size = 12, base_family = "Times New Roman") +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        panel.grid = element_blank(), legend.position = "bottom",
+        strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold")) +
+  ggside::geom_xsidedensity(aes(x = PC1_global, fill = time), alpha = 0.5) +
+  ggside::geom_ysidedensity(aes(y = PC1_local, fill = time), alpha = 0.5) +
+  ggside::theme_ggside_void() +
+  labs(x = paste0("PC1 Global (", var_explained_global[1], "%)"), 
+       y = paste0("PC1 Local (", var_explained_local[1], "%)"),
+       fill = "Time design") +
+  guides(color = "none", fill = guide_legend(override.aes = list(alpha = 0.5)))
+)
+
+
+
+ggsave(paste0("~/Documents/GitHub/OptimSS/data/5_figures/6_pca_", species, ".jpg"), g, width = 15, height = 10, dpi = 300)
+
